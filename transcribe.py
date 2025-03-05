@@ -9,6 +9,7 @@ import numpy as np
 import tempfile
 import math
 import time
+import sys
 
 # 環境変数をロード
 load_dotenv()
@@ -16,9 +17,11 @@ load_dotenv()
 # Google API キーを設定
 api_key = os.getenv("GOOGLE_API_KEY")
 if not api_key:
-    raise ValueError("GOOGLE_API_KEY が設定されていません。.env ファイルを確認してください。")
+    print("警告: GOOGLE_API_KEY が設定されていません。GUIから設定してください。")
 
-genai.configure(api_key=api_key)
+# APIキーが存在する場合のみ設定
+if api_key:
+    genai.configure(api_key=api_key)
 
 # サポートされている音声フォーマット
 SUPPORTED_FORMATS = [
@@ -113,16 +116,15 @@ def format_timestamp(ms):
         return f"{minutes:02d}:{seconds:02d}"
 
 def transcribe_audio_segment(segment, start_ms=0, model_name="gemini-2.0-flash", language="japanese", with_timestamps=False, max_retries=3):
-    """単一の音声セグメントを文字起こしします
+    """音声セグメントを文字起こしします"""
+    # APIキーが設定されているか確認
+    if not os.getenv("GOOGLE_API_KEY"):
+        raise ValueError("GOOGLE_API_KEY が設定されていません。")
     
-    Args:
-        segment: 音声セグメント（AudioSegmentオブジェクト）
-        start_ms: セグメントの開始位置（ミリ秒）
-        model_name: 使用するGeminiモデル名
-        language: 文字起こしする言語
-        with_timestamps: タイムスタンプを付けるかどうか
-        max_retries: 最大再試行回数
-    """
+    # APIキーを設定
+    current_api_key = os.getenv("GOOGLE_API_KEY")
+    genai.configure(api_key=current_api_key)
+    
     # 一時ファイルを作成して音声データを保存
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
         # 16-bit PCM WAVに変換して保存
@@ -197,15 +199,15 @@ def transcribe_audio_segment(segment, start_ms=0, model_name="gemini-2.0-flash",
             pass
 
 def generate_minutes(transcription, model_name="gemini-2.0-flash"):
-    """文字起こし結果から議事録を生成します
+    """文字起こしから議事録を生成します"""
+    # APIキーが設定されているか確認
+    if not os.getenv("GOOGLE_API_KEY"):
+        raise ValueError("GOOGLE_API_KEY が設定されていません。")
     
-    Args:
-        transcription: 文字起こし結果のテキスト
-        model_name: 使用するGeminiモデル名
+    # APIキーを設定
+    current_api_key = os.getenv("GOOGLE_API_KEY")
+    genai.configure(api_key=current_api_key)
     
-    Returns:
-        生成された議事録（マークダウン形式）
-    """
     print("議事録を生成中...")
     
     try:
@@ -289,6 +291,14 @@ def transcribe_audio(audio_data, model_name="gemini-2.0-flash", language="japane
     Returns:
         文字起こし結果のテキスト、または(文字起こし結果, 議事録)のタプル
     """
+    # APIキーが設定されているか確認
+    if not os.getenv("GOOGLE_API_KEY"):
+        raise ValueError("GOOGLE_API_KEY が設定されていません。")
+    
+    # APIキーを設定
+    current_api_key = os.getenv("GOOGLE_API_KEY")
+    genai.configure(api_key=current_api_key)
+    
     duration_minutes = get_audio_segment_duration_minutes(audio_data)
     
     # 音声の長さがMAX_AUDIO_DURATION_MINUTESより短い場合は分割せずに処理
@@ -345,56 +355,64 @@ def main():
     parser.add_argument("--minutes", action="store_true",
                       help="議事録も生成する")
     parser.add_argument("--minutes-output", help="議事録の出力ファイル")
+    parser.add_argument("--api-key", help="Google API キー（指定しない場合は環境変数から読み込み）")
     
     args = parser.parse_args()
     
+    # APIキーの設定
+    if args.api_key:
+        os.environ["GOOGLE_API_KEY"] = args.api_key
+        genai.configure(api_key=args.api_key)
+    elif not os.getenv("GOOGLE_API_KEY"):
+        print("エラー: GOOGLE_API_KEY が設定されていません。--api-key オプションで指定するか、環境変数を設定してください。")
+        sys.exit(1)
+    
     try:
-        print(f"音声ファイルを読み込み中: {args.audio_file}")
-        audio, format_name = load_audio_file(args.audio_file)
+        # 音声ファイルを読み込み
+        print(f"音声ファイル '{args.audio_file}' を読み込んでいます...")
+        audio_data, _ = load_audio_file(args.audio_file)
         
-        print(f"文字起こしを開始します（モデル: {args.model}、言語: {args.language}、タイムスタンプ: {'あり' if args.timestamps else 'なし'}、議事録生成: {'あり' if args.minutes else 'なし'}）...")
-        
+        # 文字起こし実行
         if args.minutes:
+            print(f"文字起こしと議事録生成を開始します（モデル: {args.model}, 言語: {args.language}）...")
             transcription, minutes = transcribe_audio(
-                audio, 
-                model_name=args.model, 
-                language=args.language, 
+                audio_data, 
+                model_name=args.model,
+                language=args.language,
                 with_timestamps=args.timestamps,
                 generate_minutes_flag=True
             )
-            
-            # 議事録の出力
-            if args.minutes_output:
-                with open(args.minutes_output, "w", encoding="utf-8") as f:
-                    f.write(minutes)
-                print(f"議事録を保存しました: {args.minutes_output}")
-            else:
-                print("\n===== 議事録 =====")
-                print(minutes)
-                print("=================")
         else:
+            print(f"文字起こしを開始します（モデル: {args.model}, 言語: {args.language}）...")
             transcription = transcribe_audio(
-                audio, 
-                model_name=args.model, 
-                language=args.language, 
+                audio_data, 
+                model_name=args.model,
+                language=args.language,
                 with_timestamps=args.timestamps
             )
         
-        # 文字起こし結果の出力
+        # 結果の出力
         if args.output:
             with open(args.output, "w", encoding="utf-8") as f:
                 f.write(transcription)
-            print(f"文字起こし結果を保存しました: {args.output}")
+            print(f"文字起こし結果を '{args.output}' に保存しました")
         else:
-            print("\n===== 文字起こし結果 =====")
+            print("\n=== 文字起こし結果 ===\n")
             print(transcription)
-            print("========================")
-            
+        
+        # 議事録の出力
+        if args.minutes:
+            if args.minutes_output:
+                with open(args.minutes_output, "w", encoding="utf-8") as f:
+                    f.write(minutes)
+                print(f"議事録を '{args.minutes_output}' に保存しました")
+            else:
+                print("\n=== 議事録 ===\n")
+                print(minutes)
+        
     except Exception as e:
-        print(f"エラーが発生しました: {str(e)}")
-        return 1
-    
-    return 0
+        print(f"エラー: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     exit(main()) 

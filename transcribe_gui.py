@@ -3,25 +3,32 @@ import sys
 import tkinter as tk
 from tkinter import filedialog, scrolledtext, messagebox, ttk
 from pathlib import Path
-from dotenv import load_dotenv
+# from dotenv import load_dotenv, set_key  # dotenv関連のインポートをコメントアウト
 import threading
+import json
 
 # 既存のtranscribe.pyから関数をインポート
 from transcribe import load_audio_file, transcribe_audio
 
 # 環境変数をロード
-load_dotenv()
+# load_dotenv() # コメントアウト
+
+# 設定ファイルのパス
+CONFIG_FILE = "config.json"
 
 class TranscribeApp:
     def __init__(self, root):
         self.root = root
         self.root.title("音声文字起こしツール")
-        self.root.geometry("800x1000")  # ウィンドウサイズを大きくする
-        self.root.minsize(800, 600)  # 最小サイズも変更
+        self.root.geometry("800x900")  # 初期サイズを調整
+        self.root.minsize(800, 700)  # 最小サイズも調整
         
         # フォントとスタイルの設定
         self.font_default = ("Yu Gothic UI", 10)
         self.font_heading = ("Yu Gothic UI", 12, "bold")
+        
+        # 設定の読み込み
+        self.config = self.load_config()
         
         # メインフレーム
         self.main_frame = tk.Frame(root, padx=20, pady=20)
@@ -30,7 +37,7 @@ class TranscribeApp:
         # タイトル
         self.title_label = tk.Label(
             self.main_frame, 
-            text="Gemini 2.0 Flash 音声文字起こし・議事録作成ツール", 
+            text="音声文字起こし・議事録作成ツール", 
             font=("Yu Gothic UI", 16, "bold"),
             pady=10
         )
@@ -65,6 +72,56 @@ class TranscribeApp:
             width=10
         )
         self.browse_button.pack(side=tk.RIGHT)
+        
+        # APIキー設定セクション
+        self.api_frame = tk.LabelFrame(
+            self.main_frame, 
+            text="API設定", 
+            font=self.font_heading,
+            padx=10, 
+            pady=10
+        )
+        self.api_frame.pack(fill=tk.X, pady=10)
+        
+        # APIキー入力
+        self.api_label = tk.Label(
+            self.api_frame, 
+            text="Google API キー:", 
+            font=self.font_default
+        )
+        self.api_label.grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        
+        self.api_var = tk.StringVar(value=self.config.get("api_key", os.getenv("GOOGLE_API_KEY", "")))
+        self.api_var = tk.StringVar(value=self.config.get("api_key", ""))
+        self.api_entry = tk.Entry(
+            self.api_frame, 
+            textvariable=self.api_var, 
+            font=self.font_default,
+            width=40,
+            show="*"  # パスワードのように表示
+        )
+        self.api_entry.grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # APIキー表示切り替えチェックボックス
+        self.show_api_var = tk.BooleanVar(value=False)
+        self.show_api_check = tk.Checkbutton(
+            self.api_frame,
+            text="APIキーを表示",
+            variable=self.show_api_var,
+            font=self.font_default,
+            command=self.toggle_api_visibility
+        )
+        self.show_api_check.grid(row=0, column=2, sticky=tk.W, padx=5, pady=5)
+        
+        # APIキー保存ボタン
+        self.save_api_button = tk.Button(
+            self.api_frame,
+            text="APIキーを保存",
+            font=self.font_default,
+            command=self.save_api_key,
+            width=15
+        )
+        self.save_api_button.grid(row=0, column=3, sticky=tk.W, padx=5, pady=5)
         
         # オプションフレーム
         self.options_frame = tk.LabelFrame(
@@ -179,57 +236,13 @@ class TranscribeApp:
         self.progress_bar.pack(fill=tk.X, pady=(0, 10))
         
         # 結果表示ペイン (Panedウィンドウを使用して分割)
-        self.results_paned = ttk.PanedWindow(self.main_frame, orient=tk.VERTICAL)
-        self.results_paned.pack(fill=tk.BOTH, expand=True, pady=10)
-        
-        # 文字起こし結果フレーム
-        self.transcription_frame = tk.LabelFrame(
-            self.results_paned, 
-            text="文字起こし結果", 
-            font=self.font_heading,
-            padx=10, 
-            pady=10
-        )
-        
-        # 議事録フレーム
-        self.minutes_frame = tk.LabelFrame(
-            self.results_paned, 
-            text="議事録", 
-            font=self.font_heading,
-            padx=10, 
-            pady=10
-        )
-        
-        # ペインに追加
-        self.results_paned.add(self.transcription_frame, weight=1)
-        self.results_paned.add(self.minutes_frame, weight=1)
-        
-        # 文字起こし結果テキストエリア
-        self.result_text = scrolledtext.ScrolledText(
-            self.transcription_frame, 
-            wrap=tk.WORD, 
-            font=self.font_default,
-            height=10
-        )
-        self.result_text.pack(fill=tk.BOTH, expand=True)
-        
-        # 議事録テキストエリア
-        self.minutes_text = scrolledtext.ScrolledText(
-            self.minutes_frame, 
-            wrap=tk.WORD, 
-            font=self.font_default,
-            height=10
-        )
-        self.minutes_text.pack(fill=tk.BOTH, expand=True)
-        
-        # ボタンフレーム
         self.button_frame = tk.Frame(self.main_frame)
-        self.button_frame.pack(fill=tk.X, pady=(5, 0))
+        self.button_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(5, 10))
         
         # 文字起こし結果保存ボタン
         self.save_button = tk.Button(
-            self.button_frame, 
-            text="文字起こし結果を保存", 
+            self.button_frame,
+            text="文字起こし結果を保存",
             font=self.font_default,
             command=self.save_result,
             state=tk.DISABLED,
@@ -239,14 +252,61 @@ class TranscribeApp:
         
         # 議事録保存ボタン
         self.save_minutes_button = tk.Button(
-            self.button_frame, 
-            text="議事録を保存", 
+            self.button_frame,
+            text="議事録を保存",
             font=self.font_default,
             command=self.save_minutes,
             state=tk.DISABLED,
             width=20
         )
         self.save_minutes_button.pack(side=tk.LEFT)
+        
+        # PanedWindowの高さを制限して、ボタンが見えるようにする
+        results_frame = tk.Frame(self.main_frame)
+        results_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 5))
+        
+        self.results_paned = ttk.PanedWindow(results_frame, orient=tk.VERTICAL)
+        self.results_paned.pack(fill=tk.BOTH, expand=True)
+        
+        # 文字起こし結果フレーム
+        self.transcription_frame = tk.LabelFrame(
+            self.results_paned,
+            text="文字起こし結果",
+            font=self.font_heading,
+            padx=10,
+            pady=10
+        )
+        
+        # 議事録フレーム
+        self.minutes_frame = tk.LabelFrame(
+            self.results_paned,
+            text="議事録",
+            font=self.font_heading,
+            padx=10,
+            pady=10
+        )
+        
+        # ペインに追加
+        self.results_paned.add(self.transcription_frame, weight=1)
+        self.results_paned.add(self.minutes_frame, weight=1)
+        
+        # 文字起こし結果テキストエリア
+        self.result_text = scrolledtext.ScrolledText(
+            self.transcription_frame,
+            wrap=tk.WORD,
+            font=self.font_default,
+            height=20  # 高さを少し小さくする
+        )
+        self.result_text.pack(fill=tk.BOTH, expand=True)
+        
+        # 議事録テキストエリア
+        self.minutes_text = scrolledtext.ScrolledText(
+            self.minutes_frame,
+            wrap=tk.WORD,
+            font=self.font_default,
+            height=20  # 高さを少し小さくする
+        )
+        self.minutes_text.pack(fill=tk.BOTH, expand=True)
         
         # 初期状態ではプログレスバーを非表示に
         self.progress_bar.pack_forget()
@@ -263,6 +323,12 @@ class TranscribeApp:
             messagebox.showerror(
                 "APIキーエラー", 
                 "Google API Keyが設定されていません。\n.envファイルを確認してください。"
+            )
+        # config.jsonからAPIキーが読み込まれていない場合のエラーメッセージ
+        if not self.config.get("api_key"):
+            messagebox.showerror(
+                "APIキーエラー",
+                "Google API Keyが設定されていません。\nconfig.jsonファイルを確認してください。"
             )
 
     def browse_file(self):
@@ -299,6 +365,15 @@ class TranscribeApp:
         if self.processing:
             return
         
+        # APIキーが入力されているか確認
+        api_key = self.api_var.get().strip()
+        if not api_key:
+            messagebox.showerror("エラー", "APIキーが設定されていません。")
+            return
+        
+        # 環境変数にAPIキーを設定
+        os.environ["GOOGLE_API_KEY"] = api_key
+        
         # UIを処理中状態に更新
         self.processing = True
         self.execute_button.config(state=tk.DISABLED, text="処理中...")
@@ -320,6 +395,17 @@ class TranscribeApp:
     def process_transcription(self, filepath):
         """バックグラウンドで文字起こし処理を実行する"""
         try:
+            # APIキーの確認
+            api_key = self.api_var.get().strip()
+            if not api_key:
+                self.update_status("エラー: APIキーが設定されていません")
+                self.update_result("エラー: APIキーが設定されていません。API設定セクションでAPIキーを入力してください。", is_error=True)
+                self.finish_processing()
+                return
+            
+            # 環境変数にAPIキーを設定
+            os.environ["GOOGLE_API_KEY"] = api_key
+            
             model = self.model_var.get()
             language = self.language_var.get()
             with_timestamps = self.timestamp_var.get()
@@ -566,6 +652,48 @@ class TranscribeApp:
                 messagebox.showinfo("保存完了", f"議事録を保存しました: {filepath}")
             except Exception as e:
                 messagebox.showerror("エラー", f"保存中にエラーが発生しました: {str(e)}")
+
+    def toggle_api_visibility(self):
+        """APIキーの表示/非表示を切り替える"""
+        if self.show_api_var.get():
+            self.api_entry.config(show="")
+        else:
+            self.api_entry.config(show="*")
+    
+    def save_api_key(self):
+        """APIキーを保存する"""
+        api_key = self.api_var.get().strip()
+        if not api_key:
+            messagebox.showerror("エラー", "APIキーが入力されていません。")
+            return
+        
+        # 設定ファイルに保存
+        self.config["api_key"] = api_key
+        self.save_config()
+        
+        # 環境変数にも設定
+        os.environ["GOOGLE_API_KEY"] = api_key
+        
+        messagebox.showinfo("成功", "APIキーが保存されました。")
+    
+    def load_config(self):
+        """設定ファイルを読み込む"""
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r") as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"設定ファイルの読み込みエラー: {e}")
+        return {}
+    
+    def save_config(self):
+        """設定ファイルを保存する"""
+        try:
+            with open(CONFIG_FILE, "w") as f:
+                json.dump(self.config, f)
+        except Exception as e:
+            print(f"設定ファイルの保存エラー: {e}")
+            messagebox.showerror("エラー", f"設定の保存に失敗しました: {e}")
 
 def main():
     root = tk.Tk()

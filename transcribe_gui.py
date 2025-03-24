@@ -16,6 +16,17 @@ from transcribe import load_audio_file, transcribe_audio
 # 設定ファイルのパス
 CONFIG_FILE = "config.json"
 
+def get_resource_path(relative_path):
+    """リソースファイルの絶対パスを取得する"""
+    try:
+        # PyInstallerでビルドされた場合のパスを取得
+        base_path = sys._MEIPASS
+    except Exception:
+        # 通常のPython実行時のパスを取得
+        base_path = os.path.abspath(".")
+    
+    return os.path.join(base_path, relative_path)
+
 class TranscribeApp:
     def __init__(self, root):
         self.root = root
@@ -348,7 +359,8 @@ class TranscribeApp:
         )
         
         if filepath:
-            self.path_var.set(filepath)
+            # 絶対パスに変換して保存
+            self.path_var.set(os.path.abspath(filepath))
     
     def execute_transcription(self):
         """文字起こし処理を実行する"""
@@ -395,6 +407,9 @@ class TranscribeApp:
     def process_transcription(self, filepath):
         """バックグラウンドで文字起こし処理を実行する"""
         try:
+            # 絶対パスに変換
+            filepath = os.path.abspath(filepath)
+            
             # APIキーの確認
             api_key = self.api_var.get().strip()
             if not api_key:

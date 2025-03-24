@@ -22,10 +22,19 @@ def get_resource_path(relative_path):
         # PyInstallerでビルドされた場合のパスを取得
         base_path = sys._MEIPASS
     except Exception:
-        # 通常のPython実行時のパスを取得
+        # 通常のPython実行時は、現在のディレクトリを返す
         base_path = os.path.abspath(".")
     
     return os.path.join(base_path, relative_path)
+
+def get_working_directory():
+    """作業ディレクトリを取得する"""
+    if getattr(sys, 'frozen', False):
+        # exeファイル実行時は、exeファイルのディレクトリを返す
+        return os.path.dirname(os.path.abspath(sys.executable))
+    else:
+        # 通常のPython実行時は、現在のディレクトリを返す
+        return os.path.abspath(os.getcwd())
 
 class TranscribeApp:
     def __init__(self, root):
@@ -353,14 +362,49 @@ class TranscribeApp:
             ("すべてのファイル", "*.*")
         ]
         
-        filepath = filedialog.askopenfilename(
-            title="音声ファイルを選択",
-            filetypes=filetypes
-        )
-        
-        if filepath:
-            # 絶対パスに変換して保存
-            self.path_var.set(os.path.abspath(filepath))
+        try:
+            # initialdirをNoneにしておくことで、OSが前回参照したディレクトリを記憶したり、
+            # ユーザーの自由な場所からファイルを選択できるようになる
+            print(f"\n=== ファイル選択ダイアログ ===")
+            filepath = filedialog.askopenfilename(
+                title="音声ファイルを選択",
+                filetypes=filetypes,
+                initialdir=None  # 修正: get_working_directory() を使用せず None に設定
+            )
+            
+            if filepath:
+                # 絶対パスに変換して保存
+                abs_path = os.path.abspath(filepath)
+                print(f"\n2. 選択されたファイル情報:")
+                print(f"- 選択されたパス: {filepath}")
+                print(f"- 絶対パス: {abs_path}")
+                print(f"- ファイルの存在: {os.path.exists(abs_path)}")
+                print(f"- ファイルサイズ: {os.path.getsize(abs_path) if os.path.exists(abs_path) else 'N/A'} bytes")
+                print(f"- ファイルの親ディレクトリ: {os.path.dirname(abs_path)}")
+                print(f"- 親ディレクトリの存在: {os.path.exists(os.path.dirname(abs_path))}")
+                
+                if not os.path.exists(abs_path):
+                    error_msg = f"ファイルが見つかりません: {abs_path}\n"
+                    error_msg += f"現在の作業ディレクトリ: {os.getcwd()}\n"
+                    error_msg += f"ファイルの親ディレクトリ: {os.path.dirname(abs_path)}\n"
+                    error_msg += f"親ディレクトリの存在: {os.path.exists(os.path.dirname(abs_path))}\n"
+                    error_msg += f"親ディレクトリの内容: {os.listdir(os.path.dirname(abs_path)) if os.path.exists(os.path.dirname(abs_path)) else 'N/A'}"
+                    print(f"\n3. エラー情報:")
+                    print(error_msg)
+                    messagebox.showerror("エラー", error_msg)
+                    return
+                
+                self.path_var.set(abs_path)
+                print(f"\n3. ファイルパス設定完了")
+                
+        except Exception as e:
+            error_msg = f"ファイル選択中にエラーが発生しました:\n"
+            error_msg += f"エラーの種類: {type(e).__name__}\n"
+            error_msg += f"エラーメッセージ: {str(e)}\n"
+            error_msg += f"現在の作業ディレクトリ: {os.getcwd()}"
+            print(f"\n3. エラー情報:")
+            print(error_msg)
+            messagebox.showerror("エラー", error_msg)
     
     def execute_transcription(self):
         """文字起こし処理を実行する"""
@@ -369,6 +413,9 @@ class TranscribeApp:
         if not filepath:
             messagebox.showerror("エラー", "音声ファイルを選択してください。")
             return
+        
+        # ファイルパスを絶対パスに変換
+        filepath = os.path.abspath(filepath)
         
         if not os.path.exists(filepath):
             messagebox.showerror("エラー", f"ファイルが見つかりません: {filepath}")
@@ -407,12 +454,34 @@ class TranscribeApp:
     def process_transcription(self, filepath):
         """バックグラウンドで文字起こし処理を実行する"""
         try:
+            print("\n=== 文字起こし処理開始 ===")
+            print(f"1. 初期情報:")
+            print(f"- 入力ファイルパス: {filepath}")
+            print(f"- 現在の作業ディレクトリ: {os.getcwd()}")
+            
+            # 作業ディレクトリを設定 (削除対象)
+            # working_dir = get_working_directory()
+            # os.chdir(working_dir)  # ← この行を削除
+            print(f"\n2. 作業ディレクトリ設定(不要なので削除):")
+            # print(f"- 設定された作業ディレクトリ: {working_dir}")
+            # print(f"- 現在の作業ディレクトリ: {os.getcwd()}")
+            
             # 絶対パスに変換
             filepath = os.path.abspath(filepath)
+            print(f"\n3. ファイルパス情報:")
+            print(f"- 絶対パス: {filepath}")
+            print(f"- ファイルの存在: {os.path.exists(filepath)}")
+            print(f"- ファイルサイズ: {os.path.getsize(filepath) if os.path.exists(filepath) else 'N/A'} bytes")
+            print(f"- ファイルの親ディレクトリ: {os.path.dirname(filepath)}")
+            print(f"- 親ディレクトリの存在: {os.path.exists(os.path.dirname(filepath))}")
+            print(f"- 親ディレクトリの内容: {os.listdir(os.path.dirname(filepath)) if os.path.exists(os.path.dirname(filepath)) else 'N/A'}")
             
             # APIキーの確認
             api_key = self.api_var.get().strip()
             if not api_key:
+                error_msg = "APIキーが設定されていません"
+                print(f"\n4. APIキーエラー:")
+                print(f"- {error_msg}")
                 self.update_status("エラー: APIキーが設定されていません")
                 self.update_result("エラー: APIキーが設定されていません。API設定セクションでAPIキーを入力してください。", is_error=True)
                 self.finish_processing()
@@ -420,11 +489,18 @@ class TranscribeApp:
             
             # 環境変数にAPIキーを設定
             os.environ["GOOGLE_API_KEY"] = api_key
+            print(f"\n4. APIキー設定完了")
             
             model = self.model_var.get()
             language = self.language_var.get()
             with_timestamps = self.timestamp_var.get()
             generate_minutes = self.minutes_var.get()
+            
+            print(f"\n5. 処理設定:")
+            print(f"- モデル: {model}")
+            print(f"- 言語: {language}")
+            print(f"- タイムスタンプ: {'あり' if with_timestamps else 'なし'}")
+            print(f"- 議事録生成: {'あり' if generate_minutes else 'なし'}")
             
             # ステータス更新
             self.update_status("音声ファイルを読み込み中...")
@@ -433,7 +509,37 @@ class TranscribeApp:
                 self.update_minutes("議事録を準備中です...")
             
             # 音声ファイルを読み込む
-            audio, format_name = load_audio_file(filepath)
+            try:
+                if not os.path.exists(filepath):
+                    error_msg = f"ファイルが見つかりません: {filepath}\n"
+                    error_msg += f"現在の作業ディレクトリ: {os.getcwd()}\n"
+                    error_msg += f"ファイルの親ディレクトリ: {os.path.dirname(filepath)}\n"
+                    error_msg += f"親ディレクトリの存在: {os.path.exists(os.path.dirname(filepath))}\n"
+                    error_msg += f"親ディレクトリの内容: {os.listdir(os.path.dirname(filepath)) if os.path.exists(os.path.dirname(filepath)) else 'N/A'}"
+                    print(f"\n6. ファイル存在エラー:")
+                    print(error_msg)
+                    self.update_result(error_msg, True)
+                    self.finish_processing()
+                    return
+                
+                print(f"\n6. 音声ファイル読み込み開始")
+                audio, format_name = load_audio_file(filepath)
+                print(f"音声ファイルの読み込みに成功しました")
+            except Exception as e:
+                error_msg = f"音声ファイルの読み込みに失敗しました:\n"
+                error_msg += f"エラーの種類: {type(e).__name__}\n"
+                error_msg += f"エラーメッセージ: {str(e)}\n"
+                error_msg += f"現在の作業ディレクトリ: {os.getcwd()}\n"
+                error_msg += f"ファイルパス: {filepath}\n"
+                error_msg += f"システム情報:\n"
+                error_msg += f"- OS: {sys.platform}\n"
+                error_msg += f"- Python: {sys.version}\n"
+                error_msg += f"- 文字コード: {sys.getfilesystemencoding()}"
+                print(f"\n6. 音声ファイル読み込みエラー:")
+                print(error_msg)
+                self.update_result(error_msg, True)
+                self.finish_processing()
+                return
             
             # 音声の長さを取得（分）
             duration_minutes = len(audio) / (1000 * 60)

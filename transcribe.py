@@ -64,18 +64,70 @@ MINUTES_TEMPLATE = """
 """
 
 def load_audio_file(file_path):
-    """音声ファイルを読み込み、適切なフォーマットに変換します"""
-    file_path = Path(file_path)
-    extension = file_path.suffix.lower()[1:]
-    
-    if extension not in SUPPORTED_FORMATS:
-        raise ValueError(f"サポートされていないファイル形式です: {extension}。サポートされる形式: {', '.join(SUPPORTED_FORMATS)}")
-    
+    """音声ファイルを読み込む"""
     try:
+        print(f"\n=== 音声ファイル読み込み開始 ===")
+        print(f"1. 入力情報:")
+        print(f"- 入力ファイルパス: {file_path}")
+        print(f"- 現在の作業ディレクトリ: {os.getcwd()}")
+        
+        # 絶対パスに変換
+        file_path = os.path.abspath(file_path)
+        print(f"\n2. パス情報:")
+        print(f"- 絶対パス: {file_path}")
+        print(f"- ファイルの存在: {os.path.exists(file_path)}")
+        print(f"- ファイルサイズ: {os.path.getsize(file_path) if os.path.exists(file_path) else 'N/A'} bytes")
+        print(f"- ファイルの親ディレクトリ: {os.path.dirname(file_path)}")
+        print(f"- 親ディレクトリの存在: {os.path.exists(os.path.dirname(file_path))}")
+        print(f"- 親ディレクトリの内容: {os.listdir(os.path.dirname(file_path)) if os.path.exists(os.path.dirname(file_path)) else 'N/A'}")
+        
+        # ファイル形式の確認
+        file_ext = os.path.splitext(file_path)[1].lower()
+        print(f"\n3. ファイル形式:")
+        print(f"- 拡張子: {file_ext}")
+        
+        supported_formats = ['.wav', '.flac', '.mp3', '.ogg', '.webm', '.mp4', '.amr', '.3gp', '.m4a', '.opus', '.speex']
+        if file_ext not in supported_formats:
+            error_msg = f"サポートされていないファイル形式です: {file_ext}\n"
+            error_msg += f"サポートされている形式: {', '.join(supported_formats)}"
+            print(f"\n4. エラー情報:")
+            print(error_msg)
+            raise ValueError(error_msg)
+        
+        # ファイルの存在確認
+        if not os.path.exists(file_path):
+            error_msg = f"ファイルが見つかりません: {file_path}\n"
+            error_msg += f"現在の作業ディレクトリ: {os.getcwd()}\n"
+            error_msg += f"ファイルの親ディレクトリ: {os.path.dirname(file_path)}\n"
+            error_msg += f"親ディレクトリの存在: {os.path.exists(os.path.dirname(file_path))}\n"
+            error_msg += f"親ディレクトリの内容: {os.listdir(os.path.dirname(file_path)) if os.path.exists(os.path.dirname(file_path)) else 'N/A'}"
+            print(f"\n4. エラー情報:")
+            print(error_msg)
+            raise FileNotFoundError(error_msg)
+        
+        print(f"\n4. 音声ファイル読み込み:")
+        print(f"- ファイルを読み込み中...")
         audio = AudioSegment.from_file(file_path)
-        return audio, extension
+        print(f"- 読み込み成功")
+        print(f"- 音声の長さ: {len(audio)}ms")
+        print(f"- チャンネル数: {audio.channels}")
+        print(f"- サンプルレート: {audio.frame_rate}Hz")
+        
+        return audio, file_ext
+        
     except Exception as e:
-        raise ValueError(f"音声ファイルの読み込みに失敗しました: {str(e)}")
+        error_msg = f"音声ファイルの読み込みに失敗しました:\n"
+        error_msg += f"エラーの種類: {type(e).__name__}\n"
+        error_msg += f"エラーメッセージ: {str(e)}\n"
+        error_msg += f"現在の作業ディレクトリ: {os.getcwd()}\n"
+        error_msg += f"ファイルパス: {file_path}\n"
+        error_msg += f"システム情報:\n"
+        error_msg += f"- OS: {sys.platform}\n"
+        error_msg += f"- Python: {sys.version}\n"
+        error_msg += f"- 文字コード: {sys.getfilesystemencoding()}"
+        print(f"\n5. エラー情報:")
+        print(error_msg)
+        raise ValueError(error_msg)
 
 def get_audio_segment_duration_minutes(audio_segment):
     """音声セグメントの長さを分で返します"""

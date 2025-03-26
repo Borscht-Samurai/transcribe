@@ -11,6 +11,39 @@ import math
 import time
 import sys
 
+# FFmpegのパスを設定
+def setup_ffmpeg():
+    try:
+        # 実行ファイルのディレクトリを取得
+        if getattr(sys, 'frozen', False):
+            # PyInstallerでビルドされた場合
+            base_path = os.path.dirname(sys.executable)
+        else:
+            # 通常のPython実行時
+            base_path = os.path.abspath(os.path.dirname(__file__))
+        
+        # FFmpegのパスを設定
+        ffmpeg_path = os.path.join(base_path, 'ffmpeg', 'bin')
+        
+        # 環境変数にFFmpegのパスを追加
+        os.environ['PATH'] = ffmpeg_path + os.pathsep + os.environ.get('PATH', '')
+        
+        # pydubにFFmpegのパスを設定
+        AudioSegment.converter = os.path.join(ffmpeg_path, 'ffmpeg.exe')
+        AudioSegment.ffmpeg = os.path.join(ffmpeg_path, 'ffmpeg.exe')
+        AudioSegment.ffprobe = os.path.join(ffmpeg_path, 'ffprobe.exe')
+        
+        print(f"FFmpegのパスを設定しました: {ffmpeg_path}")
+        print(f"ffmpeg.exe: {os.path.exists(AudioSegment.ffmpeg)}")
+        print(f"ffprobe.exe: {os.path.exists(AudioSegment.ffprobe)}")
+        
+    except Exception as e:
+        print(f"FFmpegのパス設定中にエラーが発生しました: {str(e)}")
+        raise
+
+# FFmpegのパスを設定
+setup_ffmpeg()
+
 # 環境変数をロード
 load_dotenv()
 
